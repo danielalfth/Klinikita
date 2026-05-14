@@ -154,7 +154,14 @@ export default function TicketPage() {
   const handleDownloadPDF = () => {
     const token = localStorage.getItem('klinikita_token');
     if (medicalRecordId && token) {
-      window.open(getPatientPDFUrl(medicalRecordId, token), '_blank');
+      const url = getPatientPDFUrl(medicalRecordId, token);
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
@@ -263,12 +270,22 @@ export default function TicketPage() {
 
           {/* Action buttons */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {isFinished && medicalRecordId && (
-              <button onClick={handleDownloadPDF} className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>📄</span>
-                Unduh Rekam Medis (PDF)
-              </button>
-            )}
+            {isFinished && medicalRecordId && (() => {
+              const token = localStorage.getItem('klinikita_token');
+              const pdfUrl = token ? getPatientPDFUrl(medicalRecordId, token) : null;
+              return pdfUrl ? (
+                <a
+                  href={pdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-primary"
+                  style={{ width: '100%', padding: '14px', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none', boxSizing: 'border-box' }}
+                >
+                  <span style={{ fontSize: 18 }}>📄</span>
+                  Unduh Rekam Medis (PDF)
+                </a>
+              ) : null;
+            })()}
             <button onClick={handleBack} className="btn-secondary" style={{ width: '100%', padding: '14px', fontSize: 14 }}>
               ← Kembali ke Beranda
             </button>
