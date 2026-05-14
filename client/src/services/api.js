@@ -24,6 +24,7 @@ export const getPublicSchedule  = ()     => api.get('/public/schedule');
 export const takeTicket         = (poli) => api.post('/public/queue/take', { poli });
 export const getQueueStatus     = (token) => api.get('/public/queue/status', { headers: { 'X-Access-Token': token } });
 export const getPatientPDFUrl   = (id, token) => `${BASE}/public/medical-records/${id}/pdf?token=${encodeURIComponent(token)}`;
+export const getPatientMedicalRecordId = (token) => api.get('/public/queue/medical-record-id', { params: { token } });
 
 // Admin — Queues
 export const getAdminQueues = (poli, date) => api.get('/admin/queues', { params: { poli, date } });

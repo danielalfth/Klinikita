@@ -265,5 +265,31 @@ async function getPatientPDF(req, res) {
   }
 }
 
-module.exports = { getPatientRecords, updateMedicalRecord, getPDF, getShiftStatus, getAllMedicalRecords, getPatientPDF };
+// GET /api/public/queue/medical-record-id?token=xxx
+// Digunakan pasien untuk polling medical_record_id ketika status selesai
+async function getPatientMedicalRecordId(req, res) {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ success: false, message: 'Token diperlukan.' });
+
+    const rows = await sql`
+      SELECT mr.id AS medical_record_id
+      FROM "Queue" q
+      JOIN "MedicalRecord" mr ON mr.queue_id = q.id
+      WHERE q.access_token = ${token} AND q.status = 'selesai'
+      LIMIT 1
+    `;
+
+    if (rows.length === 0) {
+      return res.json({ success: true, data: { medical_record_id: null } });
+    }
+
+    return res.json({ success: true, data: { medical_record_id: rows[0].medical_record_id } });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+}
+
+module.exports = { getPatientRecords, updateMedicalRecord, getPDF, getShiftStatus, getAllMedicalRecords, getPatientPDF, getPatientMedicalRecordId };
 

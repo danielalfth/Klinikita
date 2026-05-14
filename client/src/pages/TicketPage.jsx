@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getQueueStatus, getPatientPDFUrl } from '../services/api';
+import { getQueueStatus, getPatientPDFUrl, getPatientMedicalRecordId } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
 
 const STATUS_CONFIG = {
@@ -68,18 +68,48 @@ export default function TicketPage() {
   const [error, setError] = useState(null);
   const [medicalRecordId, setMedicalRecordId] = useState(null);
   const navigate = useNavigate();
+  const pollingRef = useRef(null);
+
+  // Poll API untuk medical_record_id ketika status selesai tapi socket tidak mengirimnya
+  const startPollingMedicalRecord = (token) => {
+    if (pollingRef.current) return; // sudah berjalan
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await getPatientMedicalRecordId(token);
+        const mrId = res.data.data.medical_record_id;
+        if (mrId) {
+          localStorage.setItem('klinikita_medical_record_id', mrId);
+          setMedicalRecordId(mrId);
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      } catch { /* silent */ }
+    }, 3000); // cek setiap 3 detik
+  };
+
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
 
   const fetchStatus = async () => {
     const token = localStorage.getItem('klinikita_token');
     if (!token) { navigate('/'); return; }
     try {
       const res = await getQueueStatus(token);
-      setTicket(res.data.data);
+      const data = res.data.data;
+      setTicket(data);
       
-      // Check if medical record ID is stored
+      // Cek medical record ID dari localStorage
       const storedMrId = localStorage.getItem('klinikita_medical_record_id');
       if (storedMrId) {
         setMedicalRecordId(storedMrId);
+        stopPolling();
+      } else if (data.status === 'selesai') {
+        // Status sudah selesai tapi belum punya medical_record_id — mulai polling
+        startPollingMedicalRecord(token);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Tiket tidak ditemukan.');
@@ -90,6 +120,7 @@ export default function TicketPage() {
 
   useEffect(() => {
     fetchStatus();
+    return () => stopPolling(); // cleanup saat unmount
   }, []);
 
   useSocket((data) => {
@@ -97,10 +128,15 @@ export default function TicketPage() {
     if (ticket && data.queue_id === ticket.id) {
       setTicket(prev => prev ? { ...prev, status: data.status, doctor_name: data.doctor_name } : prev);
       
-      // If status changed to 'selesai' and medical_record_id is provided, store it
+      // Jika status selesai dan medical_record_id ada di event socket
       if (data.status === 'selesai' && data.medical_record_id) {
         localStorage.setItem('klinikita_medical_record_id', data.medical_record_id);
         setMedicalRecordId(data.medical_record_id);
+        stopPolling();
+      } else if (data.status === 'selesai') {
+        // Socket tidak membawa medical_record_id (misal koneksi tidak stabil) — fallback ke polling
+        const token = localStorage.getItem('klinikita_token');
+        if (token) startPollingMedicalRecord(token);
       }
     } else if (!ticket) {
       fetchStatus();
