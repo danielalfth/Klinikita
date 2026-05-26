@@ -8,6 +8,57 @@ const DAYS_ORDER = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu', 'mingg
 const DAYS_LABEL = { senin: 'Senin', selasa: 'Selasa', rabu: 'Rabu', kamis: 'Kamis', jumat: 'Jumat', sabtu: 'Sabtu', minggu: 'Minggu' };
 const POLI_LABEL = { umum: 'Poli Umum', gigi: 'Poli Gigi' };
 
+// Hitung status buka/tutup klinik dan per-poli dari data jadwal
+function getClinicStatus(schedule, now) {
+  const dayNames = ['minggu','senin','selasa','rabu','kamis','jumat','sabtu'];
+  const todayKey = dayNames[now.getDay()];
+  const nowTime = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' }).replace('.', ':');
+
+  const todaySchedule = schedule[todayKey] || [];
+
+  const activeAll  = todaySchedule.filter(d => d.isActiveNow);
+  const activeUmum = activeAll.filter(d => d.poli === 'umum');
+  const activeGigi = activeAll.filter(d => d.poli === 'gigi');
+
+  // Cari shift berikutnya hari ini (belum mulai)
+  const upcomingToday = todaySchedule
+    .filter(d => d.jam_mulai > nowTime)
+    .sort((a, b) => a.jam_mulai.localeCompare(b.jam_mulai));
+
+  const isKlinikOpen = activeAll.length > 0;
+  const isUmumOpen   = activeUmum.length > 0;
+  const isGigiOpen   = activeGigi.length > 0;
+
+  // Jam buka pertama hari ini
+  const firstShiftToday = todaySchedule.length > 0
+    ? [...todaySchedule].sort((a, b) => a.jam_mulai.localeCompare(b.jam_mulai))[0]
+    : null;
+
+  // Jam tutup terakhir hari ini
+  const lastShiftToday = todaySchedule.length > 0
+    ? [...todaySchedule].sort((a, b) => b.jam_selesai.localeCompare(a.jam_selesai))[0]
+    : null;
+
+  const isBeforeOpen  = firstShiftToday && nowTime < firstShiftToday.jam_mulai;
+  const isAfterClose  = lastShiftToday  && nowTime >= lastShiftToday.jam_selesai;
+  const noScheduleToday = todaySchedule.length === 0;
+
+  return {
+    todayKey,
+    isKlinikOpen,
+    isUmumOpen,
+    isGigiOpen,
+    isBeforeOpen,
+    isAfterClose,
+    noScheduleToday,
+    firstShiftToday,
+    lastShiftToday,
+    upcomingToday,
+    activeUmum,
+    activeGigi,
+  };
+}
+
 export default function LandingPage() {
   const [info, setInfo] = useState(null);
   const [schedule, setSchedule] = useState({});
@@ -84,6 +135,12 @@ export default function LandingPage() {
 
   const filteredDays = activeTab === 'semua' ? DAYS_ORDER : [activeTab];
 
+  // Hitung status klinik saat ini
+  const clinicStatus = !loading ? getClinicStatus(schedule, now) : null;
+  const isUmumOpen = clinicStatus?.isUmumOpen ?? true;
+  const isGigiOpen = clinicStatus?.isGigiOpen ?? true;
+  const isKlinikOpen = clinicStatus?.isKlinikOpen ?? true;
+
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0a0f1e 0%, #0d1f30 100%)' }}>
       {/* Navbar */}
@@ -96,13 +153,98 @@ export default function LandingPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ textAlign: 'right', display: 'none' }}>
-            <div style={{ fontSize: 13, color: '#94a3b8' }}>{dayStr}</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#0d9488' }}>{timeStr} WIB</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 100,
+            background: isKlinikOpen ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+            color: isKlinikOpen ? '#4ade80' : '#f87171',
+            border: `1px solid ${isKlinikOpen ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: isKlinikOpen ? '#4ade80' : '#f87171', animation: isKlinikOpen ? 'pulse-ring 2s infinite' : 'none' }} />
+            {loading ? '...' : isKlinikOpen ? 'Buka' : 'Tutup'}
           </div>
           <a href="/login" style={{ background: 'rgba(13,148,136,0.1)', border: '1px solid rgba(13,148,136,0.3)', color: '#2dd4bf', borderRadius: 8, padding: '8px 16px', fontSize: 13, textDecoration: 'none', fontWeight: 600 }}>Login Staf</a>
         </div>
       </nav>
+
+      {/* Clinic Status Banner */}
+      {!loading && clinicStatus && (
+        <div style={{
+          background: isKlinikOpen
+            ? 'linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.08))'
+            : 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(220,38,38,0.08))',
+          borderBottom: `1px solid ${isKlinikOpen ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+          padding: '14px 24px',
+        }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            {/* Status utama */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* <div style={{
+                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                background: isKlinikOpen ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                border: `1px solid ${isKlinikOpen ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
+              }}>
+                {isKlinikOpen ? '🟢' : '🔴'}
+              </div> */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    fontSize: 15, fontWeight: 800,
+                    color: isKlinikOpen ? '#4ade80' : '#f87171',
+                  }}>
+                    {isKlinikOpen ? 'Klinik Sedang Buka' : 'Klinik Sedang Tutup'}
+                  </span>
+                  {isKlinikOpen && (
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80', display: 'inline-block', animation: 'pulse-ring 2s infinite' }} />
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                  {clinicStatus.noScheduleToday
+                    ? 'Tidak ada jadwal dokter hari ini.'
+                    : clinicStatus.isAfterClose
+                    ? `Layanan hari ini telah selesai pukul ${clinicStatus.lastShiftToday?.jam_selesai} WIB.`
+                    : clinicStatus.isBeforeOpen
+                    ? `Klinik akan buka pukul ${clinicStatus.firstShiftToday?.jam_mulai} WIB hari ini.`
+                    : `Hari ini: ${DAYS_LABEL[clinicStatus.todayKey]} · ${timeStr} WIB`}
+                </div>
+              </div>
+            </div>
+
+            {/* Status per poli */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {[
+                { poli: 'umum', label: 'Poli Umum', icon: '🩺', isOpen: isUmumOpen, active: clinicStatus.activeUmum },
+                { poli: 'gigi', label: 'Poli Gigi',  icon: '🦷', isOpen: isGigiOpen, active: clinicStatus.activeGigi },
+              ].map(({ poli, label, icon, isOpen, active }) => (
+                <div key={poli} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 14px', borderRadius: 10,
+                  background: isOpen ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.08)',
+                  border: `1px solid ${isOpen ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.2)'}`,
+                }}>
+                  <span style={{ fontSize: 16 }}>{icon}</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isOpen ? '#4ade80' : '#f87171' }}>
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      {isOpen
+                        ? `dr. ${active[0]?.nama_dokter} · s/d ${active[0]?.jam_selesai}`
+                        : 'Tidak ada dokter aktif'}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100,
+                    background: isOpen ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.15)',
+                    color: isOpen ? '#4ade80' : '#f87171',
+                  }}>
+                    {isOpen ? 'BUKA' : 'TUTUP'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section style={{ padding: '60px 24px 40px', maxWidth: 1100, margin: '0 auto', textAlign: 'center' }}>
@@ -124,55 +266,96 @@ export default function LandingPage() {
           </span>
         </h1>
         <p style={{ fontSize: 16, color: '#94a3b8', maxWidth: 520, margin: '0 auto 40px', lineHeight: 1.7 }}>
-          Ambil tiket antrean digital dari HP Anda. Pantau posisi antrean secara real-time tanpa perlu menunggu di klinik.
+          Ambil tiket antrean digital dari HP Anda. Pantau posisi antrean secara real-time 
         </p>
 
         {/* CTA Buttons */}
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 20 }}>
-          <button
-            id="btn-tiket-umum"
-            onClick={() => handleTakeTicket('umum')}
-            disabled={!!takingTicket}
-            style={{
-              padding: '18px 36px',
-              fontSize: 16,
-              fontWeight: 700,
-              borderRadius: 16,
-              border: 'none',
-              cursor: 'pointer',
-              background: hasTicket ? 'rgba(13,148,136,0.15)' : 'linear-gradient(135deg, #0d9488, #0f766e)',
-              color: hasTicket ? '#2dd4bf' : 'white',
-              border: hasTicket ? '2px solid rgba(13,148,136,0.4)' : 'none',
-              boxShadow: hasTicket ? 'none' : '0 8px 32px rgba(13,148,136,0.4)',
-              transition: 'all 0.2s',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}
-          >
-            <span style={{ fontSize: 22 }}>🩺</span>
-            {hasTicket ? 'Lihat Tiket Saya' : (takingTicket === 'umum' ? 'Mengambil...' : 'Ambil Tiket Poli Umum')}
-          </button>
-
-          {!hasTicket && (
+          {/* Tombol Poli Umum */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <button
-              id="btn-tiket-gigi"
-              onClick={() => handleTakeTicket('gigi')}
-              disabled={!!takingTicket}
+              id="btn-tiket-umum"
+              onClick={() => handleTakeTicket('umum')}
+              disabled={!!takingTicket || (!hasTicket && !isUmumOpen)}
               style={{
                 padding: '18px 36px',
                 fontSize: 16,
                 fontWeight: 700,
                 borderRadius: 16,
-                border: '2px solid rgba(99,102,241,0.4)',
-                cursor: 'pointer',
-                background: 'rgba(99,102,241,0.1)',
-                color: '#a78bfa',
+                cursor: (!hasTicket && !isUmumOpen) ? 'not-allowed' : 'pointer',
+                background: hasTicket
+                  ? 'rgba(13,148,136,0.15)'
+                  : !isUmumOpen
+                  ? 'rgba(100,116,139,0.15)'
+                  : 'linear-gradient(135deg, #0d9488, #0f766e)',
+                color: hasTicket ? '#2dd4bf' : !isUmumOpen ? '#64748b' : 'white',
+                border: hasTicket
+                  ? '2px solid rgba(13,148,136,0.4)'
+                  : !isUmumOpen
+                  ? '2px solid rgba(100,116,139,0.3)'
+                  : 'none',
+                boxShadow: (!hasTicket && isUmumOpen) ? '0 8px 32px rgba(13,148,136,0.4)' : 'none',
                 transition: 'all 0.2s',
                 display: 'flex', alignItems: 'center', gap: 10,
+                opacity: (!hasTicket && !isUmumOpen) ? 0.6 : 1,
               }}
             >
-              <span style={{ fontSize: 22 }}>🦷</span>
-              {takingTicket === 'gigi' ? 'Mengambil...' : 'Ambil Tiket Poli Gigi'}
+              <span style={{ fontSize: 22 }}>🩺</span>
+              {hasTicket
+                ? 'Lihat Tiket Saya'
+                : !isUmumOpen
+                ? 'Poli Umum Tutup'
+                : takingTicket === 'umum'
+                ? 'Mengambil...'
+                : 'Ambil Tiket Poli Umum'}
             </button>
+            {!hasTicket && !isUmumOpen && clinicStatus && (
+              <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
+                {clinicStatus.isBeforeOpen
+                  ? `Buka pukul ${clinicStatus.firstShiftToday?.jam_mulai} WIB`
+                  : 'Tidak ada dokter aktif saat ini'}
+              </span>
+            )}
+          </div>
+
+          {/* Tombol Poli Gigi */}
+          {!hasTicket && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <button
+                id="btn-tiket-gigi"
+                onClick={() => handleTakeTicket('gigi')}
+                disabled={!!takingTicket || !isGigiOpen}
+                style={{
+                  padding: '18px 36px',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  borderRadius: 16,
+                  cursor: !isGigiOpen ? 'not-allowed' : 'pointer',
+                  background: !isGigiOpen ? 'rgba(100,116,139,0.1)' : 'rgba(99,102,241,0.1)',
+                  color: !isGigiOpen ? '#64748b' : '#a78bfa',
+                  border: !isGigiOpen
+                    ? '2px solid rgba(100,116,139,0.25)'
+                    : '2px solid rgba(99,102,241,0.4)',
+                  transition: 'all 0.2s',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  opacity: !isGigiOpen ? 0.6 : 1,
+                }}
+              >
+                <span style={{ fontSize: 22 }}>🦷</span>
+                {!isGigiOpen
+                  ? 'Poli Gigi Tutup'
+                  : takingTicket === 'gigi'
+                  ? 'Mengambil...'
+                  : 'Ambil Tiket Poli Gigi'}
+              </button>
+              {!isGigiOpen && clinicStatus && (
+                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
+                  {clinicStatus.isBeforeOpen
+                    ? `Buka pukul ${clinicStatus.firstShiftToday?.jam_mulai} WIB`
+                    : 'Tidak ada dokter aktif saat ini'}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
